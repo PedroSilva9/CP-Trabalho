@@ -1154,7 +1154,10 @@ compile :: String -> Codigo
 compile = cataExpr (either (singl . ((++) "PUSH " . show)) (uncurry foo)) . f
   where
     f x = read x :: Expr
-    foo (Op x) (a,b) = a ++ b ++ x : []
+    foo (Op x) (a,b) = case x of "+" -> a ++ b ++ "ADD" : []
+                                 "*" -> a ++ b ++ "MUL" : []
+                                 "-" -> a ++ b ++ "MIN" : []
+                                 "/" -> a ++ b ++ "DIV" : []
 \end{code}
 
 \subsection*{Problema 2}
