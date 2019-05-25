@@ -1193,9 +1193,9 @@ caixasAndOrigin2Pict = undefined
 Solução:
 \begin{code}
 cos' x = prj . for loop init where
-   loop = undefined
-   init = undefined
-   prj = undefined
+   loop (e,h,s,j) = (e + h, h * ((-(x^^2)) / s), s + j, j + 8)
+   init = (1, (-(x^^2)) / 2, 12, 18)
+   prj (e,_,_,_) = e
 \end{code}
 
 \subsection*{Problema 4}
