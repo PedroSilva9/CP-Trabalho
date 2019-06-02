@@ -115,11 +115,11 @@
 \begin{tabular}{ll}
 \textbf{Grupo} nr. & 99 (preencher)
 \\\hline
-a11111 & Nome1 (preencher)
+a84577 & José Pedro Silva
 \\
-a22222 & Nome2 (preencher)
+a84302 & José Ricardo Cunha
 \\
-a33333 & Nome3 (preencher)
+a84464 & Válter Carvalho
 \end{tabular}
 \end{center}
 
@@ -1136,7 +1136,29 @@ outExpr (Bop a b c) = i2 (b,(a,c))
 recExpr f = baseExpr id f
 
 cataExpr g = g . (recExpr (cataExpr g)) . outExpr
+\end{code}
 
+De modo a calcularmos o valor de uma Expr é necessário ter em consideração a sua operação. Após isso apenas temos que a aplicar aos respetivos Num's.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=2cm{
+    |Expr|
+           \ar[d]_-{|calcula = (cataExpr g)|}
+&
+    |Int + Op x (Expr x Expr)|
+           \ar[d]^{|id + (cataExpr g)|}
+           \ar[l]_-{|inExpr|}
+\\
+     |Int|
+&
+     |Int + Op x (Int x Int)|
+           \ar[l]^-{|g|}
+}
+
+\end{eqnarray*}
+
+\begin{code}
 calcula :: Expr -> Int
 calcula = cataExpr (either id (uncurry foo))
   where
@@ -1164,29 +1186,54 @@ compile = cataExpr (either (singl . ((++) "PUSH " . show)) (uncurry foo)) . f
 
 \begin{code}
 inL2D :: Either a (b, (X a b,X a b)) -> X a b
-inL2D = undefined
+inL2D = either Unid ((uncurry . uncurry $ Comp) . assocl)
 
 outL2D :: X a b -> Either a (b, (X a b,X a b))
-outL2D = undefined
+outL2D (Unid a) = i1 a
+outL2D (Comp b x y) = i2 (b,(x,y))
 
-recL2D f = undefined
+baseL2D f g = id -|- (f >< (g >< g))
 
-cataL2D g = undefined
+recL2D f = baseL2D id f
 
-anaL2D g = undefined
+cataL2D g = g . (recL2D (cataL2D g)) . outL2D
 
-collectLeafs = undefined
+anaL2D g = inL2D . (recL2D (anaL2D g)) . g
+
+collectLeafs = cataL2D (either singl (uncurry (++) . p2))
 
 dimen :: X Caixa Tipo -> (Float, Float)
-dimen = undefined
+dimen = cataL2D (either ((fromIntegral >< fromIntegral) . p1) mysum)
+  where
+    mysum (t,((a,b), (x,y))) = let (z,k) = (max a x, max b y)
+                               in case t of V  -> (z, b+y); Vd -> (z, b+y); Ve -> (z, b+y)
+                                            H  -> (a+x, k); Hb -> (a+x, k); Ht -> (a+x, k)
 
 calcOrigins :: ((X Caixa Tipo),Origem) -> X (Caixa,Origem) ()
-calcOrigins = undefined
+calcOrigins = anaL2D g
+  where
+    g (Unid x, o) = i1 (x,o)
+    g (Comp t x y, o) = i2 . (,) () $ (,) (x,o) (y, calc t o $ foo)
+      where
+        (xx, xy) = dimen x
+        (yx, yy) = dimen y
+        foo = (\t-> case t of H -> (xx, xy/2 - yy/2); Hb -> (xx, 0); Ht -> (xx, xy - yy)
+                              V -> (xx/2 - yx/2, xy); Vd -> (xx - yx, xy); Ve -> (0, xy)) t
+
 
 calc :: Tipo -> Origem -> (Float, Float) -> Origem
-calc = undefined
+calc _ (x,y) (a,b) = (x+a,y+b)
 
-caixasAndOrigin2Pict = undefined
+agrup_caixas :: X (Caixa,Origem) () -> Fig
+agrup_caixas = cataL2D (either (singl . swap) (uncurry (++) . p2))
+
+caixasAndOrigin2Pict = G.pictures . fmap (\((x,(i,j)), o) -> crCaixa o (f x) (g x) i j) . collectLeafs . calcOrigins
+  where
+    (f,g) = (fromIntegral . p1, fromIntegral . p2)
+
+mostra_caixas :: (L2D,Origem) -> IO ()
+mostra_caixas = display . caixasAndOrigin2Pict
+
 \end{code}
 
 \subsection*{Problema 3}
@@ -1201,32 +1248,47 @@ cos' x = prj . for loop init where
 \subsection*{Problema 4}
 Triologia ``ana-cata-hilo":
 \begin{code}
-outFS (FS l) = undefined
-outNode = undefined
+outFS (FS l) = fmap (id >< outNode) l
 
-baseFS f g h = undefined
+outNode (File b) = i1 b
+outNode (Dir x) = i2 x
+
+baseFS f g h = fmap (bimap f (g -|- h))
 
 cataFS :: ([(a, Either b c)] -> c) -> FS a b -> c
-cataFS g = undefined
+cataFS g = g . (recFS (cataFS g)) . outFS
 
 anaFS :: (c -> [(a, Either b c)]) -> c -> FS a b
-anaFS g = undefined
+anaFS g = inFS . (recFS (anaFS g)) . g
 
-hyloFS g h = undefined
+hyloFS g h = cataFS g . anaFS h
 \end{code}
 Outras funções pedidas:
 \begin{code}
 check :: (Eq a) => FS a b -> Bool
-check = undefined
+check = cataFS (p2 . foldr foo ([], False))
+  where
+    foo (a, (Right b)) acc@(x,y) = if y then acc else (a:x, y || b)
+    foo (a, _) acc@(x,y) = if y then acc else (a:x, elem a x)
 
 tar :: FS a b -> [(Path a, b)]
-tar = undefined
+tar = cataFS (concatMap foo)
+  where
+    foo (a, Left b) = [([a], b)]
+    foo (a, Right l) = fmap (((++)[a]) >< id) l
 
 untar :: (Eq a) => [(Path a, b)] -> FS a b
-untar = undefined
+untar = joinDupDirs . anaFS (fmap foo)
+  where
+    foo (a:[], b) = (a, Left b)
+    foo (a:t, b) = (a, Right [(t, b)])
 
 find :: (Eq a) => a -> FS a b -> [Path a]
-find = undefined
+find a = cataFS (concatMap goo) . cataFS (inFS . foo)
+  where
+    foo = filter (\(x,y) -> x == a)
+    goo (c, Left _) = [[c]]
+    goo (c, Right l) = fmap ((++)[c]) l
 
 new :: (Eq a) => Path a -> b -> FS a b -> FS a b
 new = undefined
