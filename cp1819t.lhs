@@ -1205,24 +1205,25 @@ collectLeafs = cataL2D (either singl (uncurry (++) . p2))
 dimen :: X Caixa Tipo -> (Float, Float)
 dimen = cataL2D (either ((fromIntegral >< fromIntegral) . p1) mysum)
   where
-    mysum (t,((a,b), (x,y))) = let (z,k) = (max a x, max b y)
-                               in case t of V  -> (z, b+y); Vd -> (z, b+y); Ve -> (z, b+y)
-                                            H  -> (a+x, k); Hb -> (a+x, k); Ht -> (a+x, k)
+    mysum (t,((a,b), (x,y))) = case t of V  -> (max a (a+x/2), b + y); Vd -> (max a (a + x), b+y); Ve -> (max a x, b + y)
+                                         H  -> (a + x, max b (b+y/2)); Hb -> (a + x, max b y); Ht -> (a + x, max b (b+y))
 
 calcOrigins :: ((X Caixa Tipo),Origem) -> X (Caixa,Origem) ()
 calcOrigins = anaL2D g
   where
     g (Unid x, o) = i1 (x,o)
-    g (Comp t x y, o) = i2 . (,) () $ (,) (x,o) (y, calc t o $ foo)
-      where
-        (xx, xy) = dimen x
-        (yx, yy) = dimen y
-        foo = (\t-> case t of H -> (xx, xy/2 - yy/2); Hb -> (xx, 0); Ht -> (xx, xy - yy)
-                              V -> (xx/2 - yx/2, xy); Vd -> (xx - yx, xy); Ve -> (0, xy)) t
-
+    g (Comp t x y, o) = let dimensao = dimen x
+                        in i2 . (,) () $ (,) (x,o) (y, calc t o dimensao)
 
 calc :: Tipo -> Origem -> (Float, Float) -> Origem
-calc _ (x,y) (a,b) = (x+a,y+b)
+calc t o f = calc_aux t $ split (p1 >< p1) (p2 >< p2) (o,f)
+  where
+    calc_aux V  = (uncurry (+) . (id >< (/2))) >< uncurry (+)
+    calc_aux Vd = uncurry (+) >< uncurry (+)
+    calc_aux Ve = p1 >< uncurry (+)
+    calc_aux H  = uncurry (+) >< (uncurry (+) . (id >< (/2)))
+    calc_aux Ht = uncurry (+) >< uncurry (+)
+    calc_aux Hb = uncurry (+) >< p1
 
 agrup_caixas :: X (Caixa,Origem) () -> Fig
 agrup_caixas = cataL2D (either (singl . swap) (uncurry (++) . p2))
@@ -1266,10 +1267,10 @@ hyloFS g h = cataFS g . anaFS h
 Outras funções pedidas:
 \begin{code}
 check :: (Eq a) => FS a b -> Bool
-check = cataFS (p2 . foldr foo ([], False))
+check = not . cataFS (p2 . foldr foo ([], False))
   where
-    foo (a, (Right b)) acc@(x,y) = if y then acc else (a:x, y || b)
-    foo (a, _) acc@(x,y) = if y then acc else (a:x, elem a x)
+    foo (a, (Right b)) acc@(x,y) = if y then acc else (a:x, y || b || elem a x)
+    foo (a, _) acc@(x,y) = if y then acc else (a:x, y || elem a x)
 
 tar :: FS a b -> [(Path a, b)]
 tar = cataFS (concatMap foo)
@@ -1291,7 +1292,17 @@ find a = cataFS (concatMap goo) . cataFS (inFS . foo)
     goo (c, Right l) = fmap ((++)[c]) l
 
 new :: (Eq a) => Path a -> b -> FS a b -> FS a b
-new = undefined
+new = curry . curry . anaFS $ g
+  where
+    g = cond ((>1) . length. p1 . p1) skip newCond
+    newCond = cond ((==1) . length . p1 . p1) addFile skip2
+    skip x = fmap (skip_aux (p1 x)) $ (\(FS z) -> z) $ p2 x
+    skip_aux = (\(x@(h:t), y) (a, b) -> case b of File f -> (a, i1 f)
+                                                  Dir f -> if h == a then (,) a $ i2 ((t, y), f) else (,) a $ i2 (([],y), f))
+    addFile ((x@(h:t),y), FS fs) = (++) (singl $ (,) h (i1 y)) $ fmap (\fs -> case fs of (a, File f) -> (a, i1 f)
+                                                                                         (a, Dir f) -> (,) a $ i2 (([], y), f)) fs
+    skip2 ((a,b), FS l) = fmap (\fs -> case fs of (k,File f) -> (k, i1 f)
+                                                  (k,Dir f) -> (,) k $ i2 (([], b),f)) l
 
 cp :: (Eq a) => Path a -> Path a -> FS a b -> FS a b
 cp = undefined
