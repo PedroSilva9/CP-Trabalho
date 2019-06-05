@@ -116,7 +116,7 @@
 
 \begin{center}\large
 \begin{tabular}{ll}
-\textbf{Grupo} nr. & 99 (preencher)
+\textbf{Grupo} nr. & 008
 \\\hline
 a84577 & José Pedro Silva
 \\
@@ -1272,13 +1272,13 @@ collectLeafs = cataL2D (either singl (uncurry (++) . p2))
 \end{code}
 
 \subsubsection*{Dimen}
-A função |dimen| tem como objetivo calcular as dimensões do retângulo final que engloba todas as caixas. De modo a calcular essa dimensão usamos um catamorfismo que dependendo do tipo de agregação.
+A função |dimen| tem como objetivo calcular as dimensões do retângulo final que engloba todas as caixas. De modo a calcular essa dimensão usamos um catamorfismo que dependendo do tipo de agregação calcula a nova dimensão.
 
 \begin{eqnarray*}
 
 \xymatrix@@C=6cm{
     |X Caixa Tipo|
-           \ar[d]_-{|compile = cataNat g|}
+           \ar[d]_-{|dimen = cataNat g|}
            \ar[r]^-{|outL2D|}
 &
     |Caixa + (Tipo >< expn ((X Caixa Tipo)) 2)|
@@ -1422,6 +1422,24 @@ cos' x = prj . for loop init where
    init = (1, (-(x^^2)) / 2, 12, 18)
    prj (e,_,_,_) = e
 \end{code}
+
+\subsubsection*{Valorização}
+O mesmo resultado mas em código C.
+
+\begin{spec}
+double cos'(double x, double n){
+  double e = 1; double h = -(expn x 2)/2;
+  double s = 12; double j = 18;
+  int i;
+  for(i=0; i<n+1; i++){
+    e = e + h;
+    h = h * (-(expn x 2)) / s;
+    s = s + j;
+    j = j + 8;
+  }
+  return e;
+}
+\end{spec}
 
 \subsection*{Problema 4}
 Triologia ``ana-cata-hilo":
@@ -1605,18 +1623,20 @@ A função |new| é utilizada para criar um ficheiro dentro de um |File System|.
 new :: (Eq a) => Path a -> b -> FS a b -> FS a b
 new = curry . curry . anaFS $ g
   where
-    g = cond ((>1) . length. p1 . p1) skip newCond
+    g = (cond ((>1) . length. p1 . p1) skip newCond) . ((id >< id) >< (fmap distr . outFS))
     newCond = cond ((==1) . length . p1 . p1) addFile skip2
-    skip x = fmap (skip_aux (p1 x)) $ (\(FS z) -> z) $ p2 x
-    skip_aux = (\(x@(h:t), y) (a, b) -> case b of File f -> (a, i1 f)
-                                                  Dir f -> if h == a then (,) a $ i2 ((t, y), f) else (,) a $ i2 (([],y), f))
-    addFile ((x@(h:t),y), FS fs) = (++) (singl $ (,) h (i1 y)) $ fmap (\fs -> case fs of (a, File f) -> (a, i1 f)
-                                                                                         (a, Dir f) -> (,) a $ i2 (([], y), f)) fs
-    skip2 ((a,b), FS l) = fmap (\fs -> case fs of (k,File f) -> (k, i1 f)
-                                                  (k,Dir f) -> (,) k $ i2 (([], b),f)) l
-
+    addFile = conc . (split (singl . (head >< i1) . p1) (uncurry (fmap . curry ((either f1 f2) . distr))))
+    skip = uncurry (fmap . curry ((either f1 func) . distr))
+    skip2 = uncurry (fmap . curry ((either f1 f2) . distr))
+    f1 = (id >< i1) . p2
+    f2 = split (p1 . p2) (i2 . ((nil >< id) >< p2))
+    func = cond (uncurry (==) . ((head . p1) >< p1)) r1 f2
+    r1 = split (p1 . p2) (i2 . ((tail >< id) >< p2))
 
 \end{code}
+
+\subsubsection*{Questão}
+No caso de substituirmos a propriedade |checkFiles| pela propriedade mais fraca |check| a prop\_new deixa de ser válida no caso de tentarmos criar um ficheiro com um identificador igual a uma diretoria, pois esta não permite que tal aconteça.
 
 \subsubsection*{cp}
 A função |cp| é utilizada para copiar um ficheiro existente num |File System|. De modo a fazer isto usamos um anamorfismo para percorrer o |File System| e quando estamos na diretoria do ficheiro em questão, copiamos o seu conteúdo para o seu novo |Path|. A inserção do ficheiro no seu novo |Path| é feita recorrendo à função previamente desenvolvida |new|.
@@ -1648,11 +1668,11 @@ cp :: (Eq a) => Path a -> Path a -> FS a b -> FS a b
 cp pa pb fs = maybeAdd pb fs $ anaFS g (pa, fs)
   where
     maybeAdd pb fs (FS x) = if null x then fs else new pb ((\(File b) -> b) . p2 $ head x) fs
-    g (a, FS l) = if null a
-                     then []
-                     else foo a $ foldr (\z@(x,y) acc -> if (head a) == x then z:acc else acc) [] l
+    g (a, FS l) = if null a then empty else foo a (aux a l)
+    aux a l = filter (\z@(x,y) -> (head a) == x) l
     foo a l = fmap (\fs -> case fs of (x, File f) -> (x, i1 f)
                                       (x, Dir f) -> (x, i2 (tail a,f))) l
+
 \end{code}
 
 \subsubsection*{rm}
@@ -1701,8 +1721,8 @@ auxJoin = fmap g . uncurry zip . (id >< repeat)
     g = (id >< (either (i1 . p1) (i2 . swap))) . (id >< distl) . assocr
 \end{code}
 
-\subsubsection*{cFS2Exp}
-Função que permite visualizar um |File System| em |Graphviz|. Para isso usamos um anamorfismo que percorre o |File System|.
+\subsubsection*{Valorização}
+A função |cFS2Exp| permite visualizar um |File System| em |Graphviz|. Para isso usamos um anamorfismo que percorre o |File System|.
 
 \begin{code}
 cFS2Exp :: a -> FS a b -> (Exp () a)
