@@ -13,6 +13,8 @@
 \def\aspas#1{``#1"}
 %================= lhs2tex=====================================================%
 %include polycode.fmt
+%format (expn (a) (n)) = "{" a "}^{" n "}"
+%format (expl (a)) = "{" a "}^*"
 %format (div (x)(y)) = x "\div " y
 %format succ = "\succ "
 %format ==> = "\Longrightarrow "
@@ -65,6 +67,7 @@
 %format LTree = "\mathsf{LTree}"
 %format inNat = "\mathsf{in}"
 %format (cataNat (g)) = "\cata{" g "}"
+%format (anaNat (g)) = "\ana{" g "}"
 %format Nat0 = "\N_0"
 %format muB = "\mu "
 %format (frac (n)(m)) = "\frac{" n "}{" m "}"
@@ -1124,6 +1127,8 @@ outras funções auxiliares que sejam necessárias.
 
 \subsection*{Problema 1}
 
+\subsubsection*{Definições base}
+
 \begin{code}
 
 inExpr :: Either Int (Op,(Expr,Expr)) -> Expr
@@ -1136,26 +1141,31 @@ outExpr (Bop a b c) = i2 (b,(a,c))
 recExpr f = baseExpr id f
 
 cataExpr g = g . (recExpr (cataExpr g)) . outExpr
+
+anaExpr g = inExpr . (recExpr (anaExpr g)) . g
+
+hyloExpr h g = cataExpr h . anaExpr g
+
 \end{code}
 
-De modo a calcularmos o valor de uma Expr é necessário ter em consideração a sua operação. Após isso apenas temos que a aplicar aos respetivos Num's.
+\subsubsection*{Calcula}
+De modo a calcularmos o valor de uma Expr é apenas necessário fazer um catamorfismo sobre a |Expr| de modo a obter o resultado da aplicação da |Op| aos |Num|'s.
 
 \begin{eqnarray*}
 
-\xymatrix@@C=2cm{
+\xymatrix@@C=4cm{
     |Expr|
-           \ar[d]_-{|calcula = (cataExpr g)|}
+           \ar[d]_-{|calcula = cataNat g|}
+           \ar[r]^-{|outExpr|}
 &
-    |Int + Op x (Expr x Expr)|
-           \ar[d]^{|id + (cataExpr g)|}
-           \ar[l]_-{|inExpr|}
+    |Int + (Op >< (Expr >< Expr))|
+           \ar[d]^{|id + (id >< (cataNat g >< cataNat g))|}
 \\
      |Int|
 &
-     |Int + Op x (Int x Int)|
-           \ar[l]^-{|g|}
+     |Int + (Op >< (Int >< Int))|
+           \ar[l]^-{|g = either id (uncurry foo)|}
 }
-
 \end{eqnarray*}
 
 \begin{code}
@@ -1167,11 +1177,62 @@ calcula = cataExpr (either id (uncurry foo))
                                   "-" -> a - b
                                   "*" -> a * b
                                   "/" -> div a b
+\end{code}
+\subsubsection*{Show'}
 
+A função |show'| tem um comportamento semelhante ao da função calcula. Aplicamos na mesma um catamorfismo e consoante o tipo da |Expr| devolvemos uma string.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=4cm{
+    |Expr|
+           \ar[d]_-{|show' = cataNat g|}
+           \ar[r]^-{|outExpr|}
+&
+    |Int + (Op >< (Expr >< Expr))|
+           \ar[d]^{|id + (id >< (cataNat g >< cataNat g))|}
+\\
+     |String|
+&
+     |Int + (Op >< (String >< String))|
+           \ar[l]^-{|g = either show (uncurry foo)|}
+}
+
+\end{eqnarray*}
+
+\begin{code}
 show' = cataExpr (either show (uncurry foo))
   where
     foo (Op y) (x, z) = "(" ++ x ++ " " ++ y ++ " " ++ z ++ ")"
 
+\end{code}
+
+\subsubsection*{Compile}
+
+A função compile tem como objetivo transformar uma |String| em código máquina. De modo a podemos aplicar um morfismo convertemos essa |String| para |Expr|. Após fazermos a conversão para uma |Expr| apenas precisamos de aplicar um catamorfismo onde convertemos uma |Expr| para código máquina.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=6cm{
+    |String|
+           \ar[d]_-{|read :: Expr|}
+\\
+    |Expr|
+           \ar[d]_-{|compile = cataNat g|}
+           \ar[r]^-{|outExpr|}
+&
+    |Int + (Op >< (Expr >< Expr))|
+           \ar[d]^{|id + (id >< (cataNat g >< cataNat g))|}
+\\
+     |Codigo|
+&
+     |Int + (Op >< (Codigo >< Codigo))|
+           \ar[l]^-{|g = either (singl . ((++) "PUSH " . show)) (uncurry foo)|}
+}
+
+\end{eqnarray*}
+
+\begin{code}
 compile :: String -> Codigo
 compile = cataExpr (either (singl . ((++) "PUSH " . show)) (uncurry foo)) . f
   where
@@ -1183,6 +1244,8 @@ compile = cataExpr (either (singl . ((++) "PUSH " . show)) (uncurry foo)) . f
 \end{code}
 
 \subsection*{Problema 2}
+
+\subsubsection*{Definições base}
 
 \begin{code}
 inL2D :: Either a (b, (X a b,X a b)) -> X a b
@@ -1199,45 +1262,159 @@ recL2D f = baseL2D id f
 cataL2D g = g . (recL2D (cataL2D g)) . outL2D
 
 anaL2D g = inL2D . (recL2D (anaL2D g)) . g
+\end{code}
 
+\subsubsection*{CollectLeafs}
+Ao analisarmos o tipo |L2D| vemos que este se assemelha a uma |LTree| e por isso só contém informação nas folhas. A função |collectLeafs| devolve todos os valores das folhas.
+
+\begin{code}
 collectLeafs = cataL2D (either singl (uncurry (++) . p2))
+\end{code}
 
+\subsubsection*{Dimen}
+A função |dimen| tem como objetivo calcular as dimensões do retângulo final que engloba todas as caixas. De modo a calcular essa dimensão usamos um catamorfismo que dependendo do tipo de agregação.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=6cm{
+    |X Caixa Tipo|
+           \ar[d]_-{|compile = cataNat g|}
+           \ar[r]^-{|outL2D|}
+&
+    |Caixa + (Tipo >< expn ((X Caixa Tipo)) 2)|
+           \ar[d]^{|id + (id >< expn (cataNat g) 2)|}
+\\
+     |(Float, Float)|
+&
+     |Caixa + (Tipo >< expn ((Float,Float)) 2)|
+           \ar[l]^-{|g = either ((fromIntegral >< fromIntegral) . p1) mysum|}
+}
+
+\end{eqnarray*}
+\begin{code}
 dimen :: X Caixa Tipo -> (Float, Float)
 dimen = cataL2D (either ((fromIntegral >< fromIntegral) . p1) mysum)
   where
-    mysum (t,((a,b), (x,y))) = case t of V  -> (max a (a+x/2), b + y); Vd -> (max a (a + x), b+y); Ve -> (max a x, b + y)
-                                         H  -> (a + x, max b (b+y/2)); Hb -> (a + x, max b y); Ht -> (a + x, max b (b+y))
+    mysum (t,((a,b), (x,y))) = case t of
+            V -> (max a (a+x/2), b + y)
+            Vd -> (max a (a + x), b+y)
+            Ve -> (max a x, b + y)
+            H -> (a + x, max b (b+y/2))
+            Hb -> (a + x, max b y)
+            Ht -> (a + x, max b (b+y))
+\end{code}
 
+\subsubsection*{calc}
+Função auxiliar que recebe o |Tipo| de agregação, a |Origem| e as |dimensões| da caixa e calcula a sua nova origem.
+
+\begin{code}
+calc :: Tipo -> Origem -> (Float, Float) -> Origem
+calc t o f = calcAux t $ split (p1 >< p1) (p2 >< p2) (o,f)
+  where
+    calcAux V  = (uncurry (+) . (id >< (/2))) >< uncurry (+)
+    calcAux Vd = uncurry (+) >< uncurry (+)
+    calcAux Ve = p1 >< uncurry (+)
+    calcAux H  = uncurry (+) >< (uncurry (+) . (id >< (/2)))
+    calcAux Ht = uncurry (+) >< uncurry (+)
+    calcAux Hb = uncurry (+) >< p1
+\end{code}
+
+\subsubsection*{calcOrigins}
+Função que recebendo um |(X Caixa Tipo, Origem)| calcula a origem para todas as caixas.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=3cm{
+    |(X Caixa Tipo, Origem)|
+           \ar[d]_-{|calcOrigins = anaNat g|}
+           \ar[r]^-{|g|}
+&
+    |(Caixa,Origem) + (() >< expn (((X Caixa Tipo),Origem)) 2)|
+           \ar[d]^{|id + (id >< expn (anaNat g) 2)|}
+\\
+     |X (Caixa,Origem) ()|
+&
+     |(Caixa,Origem) + (() >< expn ((X (Caixa, Origem) ())) 2)|
+           \ar[l]^-{|inL2D|}
+}
+
+\end{eqnarray*}
+
+\begin{code}
 calcOrigins :: ((X Caixa Tipo),Origem) -> X (Caixa,Origem) ()
 calcOrigins = anaL2D g
   where
     g (Unid x, o) = i1 (x,o)
     g (Comp t x y, o) = let dimensao = dimen x
                         in i2 . (,) () $ (,) (x,o) (y, calc t o dimensao)
-
-calc :: Tipo -> Origem -> (Float, Float) -> Origem
-calc t o f = calc_aux t $ split (p1 >< p1) (p2 >< p2) (o,f)
-  where
-    calc_aux V  = (uncurry (+) . (id >< (/2))) >< uncurry (+)
-    calc_aux Vd = uncurry (+) >< uncurry (+)
-    calc_aux Ve = p1 >< uncurry (+)
-    calc_aux H  = uncurry (+) >< (uncurry (+) . (id >< (/2)))
-    calc_aux Ht = uncurry (+) >< uncurry (+)
-    calc_aux Hb = uncurry (+) >< p1
-
-agrup_caixas :: X (Caixa,Origem) () -> Fig
-agrup_caixas = cataL2D (either (singl . swap) (uncurry (++) . p2))
-
-caixasAndOrigin2Pict = G.pictures . fmap (\((x,(i,j)), o) -> crCaixa o (f x) (g x) i j) . collectLeafs . calcOrigins
-  where
-    (f,g) = (fromIntegral . p1, fromIntegral . p2)
-
-mostra_caixas :: (L2D,Origem) -> IO ()
-mostra_caixas = display . caixasAndOrigin2Pict
-
 \end{code}
 
+\subsubsection*{agrupCaixas}
+A função |agrupCaixas| recebe um |X (Caixa,Origem) ()| e transforma numa |Fig|. Como o input é um |X (Caixa,Origem) ()| podemos aplicar um catamorfismo. Sabendo que |type Fig = [(Origem, Caixa)]| esta função fica bastante simples pois apenas precisamos de trocar a ordem de |(Caixa,Origem)| para |(Origem,Caixa)|.
+
+\begin{eqnarray*}
+
+\xymatrix@@C=4cm{
+    |X (Caixa,Origem) ()|
+           \ar[d]_-{|agrup_Caixas = cataNat g|}
+           \ar[r]^-{|outL2D|}
+&
+    |(Caixa,Origem) + (() >< expn ((X (Caixa,Origem) ())) 2)|
+           \ar[d]^{|id + (id >< expn (cataNat g) 2)|}
+\\
+     |Fig|
+&
+     |(Caixa,Origem) + (() >< expn Fig 2)|
+           \ar[l]^-{|g = either (singl . swap) (uncurry (++) . p2)|}
+}
+
+\end{eqnarray*}
+
+\begin{code}
+agrup_caixas :: X (Caixa,Origem) () -> Fig
+agrup_caixas = cataL2D (either (singl . swap) (uncurry (++) . p2))
+\end{code}
+
+\subsubsection*{caixasAndOrigin2Pict}
+De modo a transformarmos um par |(X Caixa Tipo, Origem)| numa |G.picture| usamos a função |caixasAndOrigin2Pict|.
+A função começa por calcular as origens de todas as caixas (|calcOrigins|), após isso usa a |collectLeafs| para obter o conteúdo das folhas.
+Após executarmos essas 2 funções temos agora uma lista de |(Caixa, Origem)|. De modo a criarmos uma |G.picture| aplicamos a cada elemento da lista a função |crCaixa| e seguidamente concatenamos com a função |G.pictures|.
+
+\begin{code}
+caixasAndOrigin2Pict = G.pictures . fmap func . collectLeafs . calcOrigins
+  where
+    func = \((x,(i,j)), o) -> crCaixa o (f x) (g x) i j
+    (f,g) = (fromIntegral . p1, fromIntegral . p2)
+\end{code}
+
+\subsubsection*{mostra\_caixas}
+Esta função transforma um par |(L2D, Origem)| num \emph{IO ()}, isto é, pega no par e dá display desta imagem graficamente.
+
+\begin{code}
+mostra_caixas :: (L2D,Origem) -> IO ()
+mostra_caixas = display . caixasAndOrigin2Pict
+\end{code}
+
+\newpage
 \subsection*{Problema 3}
+
+Através da fórmula que dá a série de Taylor da função cosseno conseguimos deduzir que:
+
+\begin{spec}
+e x 0 = 1
+e x (n+1) = cos' x n + h x n
+
+h x 0 = - (expn x 2) / 2
+h x (n+1) = h x n * (- (expn x 2) / s n)
+
+s 0 = 12
+s (n+1) = s n + j n
+
+j 0 = 18
+j (n+1) = j n + 8
+
+\end{spec}
+
 Solução:
 \begin{code}
 cos' x = prj . for loop init where
@@ -1264,33 +1441,167 @@ anaFS g = inFS . (recFS (anaFS g)) . g
 
 hyloFS g h = cataFS g . anaFS h
 \end{code}
+\subsubsection*{Diagrama geral cataFS}
+\xymatrix@@C=2cm{
+    |FS a b|
+           \ar[d]_-{|f = cataNat g|}
+           \ar[r]^-{|outFS|}
+&
+    |expl ((a >< (b + FS a b)))|
+           \ar[d]^{|fmap (id >< (id + cataNat g))|}
+\\
+     |C|
+&
+     |expl ((a >< (b + C)))|
+           \ar[l]^-{|g|}
+}
+
 Outras funções pedidas:
+
+\subsubsection*{check}
+O objetivo da função |check| é verificar que não existem identificadores repetidos dentro da mesma diretoria. Para isso percorre-se o |File System| e verifica-se em todas as diretorias do mesmo se existem identificadores iguais, caso isso se verifique a função |check| retornará |False|.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |FS a b|
+           \ar[d]_-{|check = cataNat g|}
+           \ar[r]^-{|outFS|}
+&
+    |expl ((a >< (b + FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (cataNat g)))|}
+\\
+     |Bool|
+           \ar[d]_-{|not|}
+&
+     |expl ((a >< (b + Bool)))|
+           \ar[l]^-{|g = p2 . foldr foo ([], False)|}
+\\
+     |Bool|
+}
+
+\end{eqnarray*}
+
 \begin{code}
 check :: (Eq a) => FS a b -> Bool
 check = not . cataFS (p2 . foldr foo ([], False))
   where
     foo (a, (Right b)) acc@(x,y) = if y then acc else (a:x, y || b || elem a x)
     foo (a, _) acc@(x,y) = if y then acc else (a:x, y || elem a x)
+\end{code}
 
+\subsubsection*{tar}
+A função |tar| tem como objetivo recolher todos os ficheiros de um |File System| para um lista. Estes são indexados juntamente com o seu respetivo |Path|. De modo a percorrer o |File System| usamos um catamorfismo e vamos adicionando todos os ficheiros à lista.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |FS a b|
+           \ar[d]_-{|tar = cataNat g|}
+           \ar[r]^-{|outFS|}
+&
+    |expl ((a >< (b + FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (cataNat g)))|}
+\\
+     |Bool|
+&
+     |expl ((a >< (b + Bool)))|
+           \ar[l]^-{|g = concatMap foo|}
+}
+\end{eqnarray*}
+
+\begin{code}
 tar :: FS a b -> [(Path a, b)]
 tar = cataFS (concatMap foo)
   where
     foo (a, Left b) = [([a], b)]
     foo (a, Right l) = fmap (((++)[a]) >< id) l
+\end{code}
 
+\subsubsection*{untar}
+A função |untar| faz o inverso da função |tar| desenvolvida anteriormente. De modo a transformar um |expl ((Path a, b))| num |File System| usamos um anamorfismo em que o objetivo é colocar cada ficheiro na sua respetiva diretoria. No final usamos a função |joinDupDirs| de modo a evitar diretorias duplicadas.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |expl ((Path a, b))|
+           \ar[d]_-{|untar = anaNat g|}
+           \ar[r]^-{|g = fmap foo|}
+&
+    |expl ((a >< (b + expl((Path a >< b)))))|
+           \ar[d]^{|fmap (id >< (id + (anaNat g)))|}
+\\
+     |FS a b|
+           \ar[d]_-{|joinDupDirs|}
+&
+     |expl((a >< (b + FS a b)))|
+           \ar[l]^-{|inFs|}
+\\
+    |FS a b|
+}
+\end{eqnarray*}
+
+\begin{code}
 untar :: (Eq a) => [(Path a, b)] -> FS a b
 untar = joinDupDirs . anaFS (fmap foo)
   where
     foo (a:[], b) = (a, Left b)
     foo (a:t, b) = (a, Right [(t, b)])
+\end{code}
 
+\subsubsection*{find}
+A função |find| tem como objetivo retornar o |Path| de um ficheiro no |File System|.
+Neste exercício usamos 2 catamorfismos, um para filtrar aqueles que tem o identificador igual e outro para juntar esses identicadores todos.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |FS a b|
+           \ar[d]_-{|f|}
+           \ar[r]^-{|outFS|}
+&
+    |expl ((a >< (b + FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (cataNat g)))|}
+\\
+     |FS a b|
+           \ar[d]^{|f'|}
+&
+     |expl ((a >< (b + FS a b)))|
+           \ar[l]^-{|g = inFS . foo|}
+           \ar[d]^{|fmap (id >< (id + (cataNat g)))|}
+\\
+     |FS a b|
+&
+     |expl ((a >< (b + FS a b)))|
+           \ar[l]^-{|g = concatMap goo|}
+}
+\end{eqnarray*}
+
+\begin{code}
 find :: (Eq a) => a -> FS a b -> [Path a]
 find a = cataFS (concatMap goo) . cataFS (inFS . foo)
   where
     foo = filter (\(x,y) -> x == a)
     goo (c, Left _) = [[c]]
     goo (c, Right l) = fmap ((++)[c]) l
+\end{code}
 
+\subsubsection*{new}
+A função |new| é utilizada para criar um ficheiro dentro de um |File System|. De modo a fazer isto usamos um anamorfismo para percorrer o |File System| e quando estamos na diretoria destino do ficheiro criamos o ficheiro adicionando-o ao |File System|.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |((Path a >< b) >< FS a b)|
+           \ar[d]_-{|new = anaNat g|}
+           \ar[r]^-{|g|}
+&
+    |expl ((a >< (b + ((Path a >< b) >< FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (anaNat g)))|}
+\\
+     |FS a b|
+&
+     |expl((a >< (b + FS a b)))|
+           \ar[l]^-{|inFS|}
+}
+\end{eqnarray*}
+
+\begin{code}
 new :: (Eq a) => Path a -> b -> FS a b -> FS a b
 new = curry . curry . anaFS $ g
   where
@@ -1304,17 +1615,102 @@ new = curry . curry . anaFS $ g
     skip2 ((a,b), FS l) = fmap (\fs -> case fs of (k,File f) -> (k, i1 f)
                                                   (k,Dir f) -> (,) k $ i2 (([], b),f)) l
 
+
+\end{code}
+
+\subsubsection*{cp}
+A função |cp| é utilizada para copiar um ficheiro existente num |File System|. De modo a fazer isto usamos um anamorfismo para percorrer o |File System| e quando estamos na diretoria do ficheiro em questão, copiamos o seu conteúdo para o seu novo |Path|. A inserção do ficheiro no seu novo |Path| é feita recorrendo à função previamente desenvolvida |new|.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |((Path a) >< FS a b)|
+           \ar[d]_-{|anaNat g|}
+           \ar[r]^-{|g|}
+&
+    |expl ((a >< (b + ((Path a) >< FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (anaNat g)))|}
+\\
+     |FS a b|
+           \ar[d]_-{}
+&
+     |expl((a >< (b + FS a b)))|
+           \ar[l]^-{|inFS|}
+\\
+    |(((Path) a >< FS a b) >< FS a b)|
+           \ar[d]_-{new}
+\\
+    |FS a b|
+}
+\end{eqnarray*}
+
+\begin{code}
 cp :: (Eq a) => Path a -> Path a -> FS a b -> FS a b
-cp = undefined
+cp pa pb fs = maybeAdd pb fs $ anaFS g (pa, fs)
+  where
+    maybeAdd pb fs (FS x) = if null x then fs else new pb ((\(File b) -> b) . p2 $ head x) fs
+    g (a, FS l) = if null a
+                     then []
+                     else foo a $ foldr (\z@(x,y) acc -> if (head a) == x then z:acc else acc) [] l
+    foo a l = fmap (\fs -> case fs of (x, File f) -> (x, i1 f)
+                                      (x, Dir f) -> (x, i2 (tail a,f))) l
+\end{code}
 
+\subsubsection*{rm}
+A função |rm| é utilizada para remover um ficheiro de um |File System|. Para alcançar esse objetivo usamos um anamorfismo que vai percorrendo o |File System| e quando encontra o ficheiro em questão, isto é para remover, não o escreve no |File System|.
+
+\begin{eqnarray*}
+\xymatrix@@C=4cm{
+    |((Path a) >< FS a b)|
+           \ar[d]_-{|rm = anaNat g|}
+           \ar[r]^-{|g|}
+&
+    |expl ((a >< (b + ((Path a) >< FS a b)))|
+           \ar[d]^{|fmap (id >< (id + (anaNat g)))|}
+\\
+     |FS a b|
+&
+     |expl((a >< (b + FS a b)))|
+           \ar[l]^-{|inFS|}
+}
+\end{eqnarray*}
+
+\begin{code}
 rm :: (Eq a) => (Path a) -> (FS a b) -> FS a b
-rm = undefined
+rm = curry . anaFS $ g
+  where
+    g = (cond ((>1) . length . p1) skip newCond) . (id >< (fmap distr)) . (id >< outFS)
+    newCond = cond ((==1) . length . p1) remove skip2
+    remove = fmap (either (id >< i1) (id >< (i2 . (split nil id)))) . uncurry (filter . curry func)
+    func = (either (uncurry (/=) . (head >< p1)) (const True)) . distr
+    skip = uncurry (fmap . curry ((either f1 f2) . distr))
+    (f1, f2) = ((id >< i1) . p2, cond (uncurry (==) . (head >< p1)) r1 r2)
+    (r1, r2) = (split (p1 . p2) (i2 . (tail >< p2)), split (p1 . p2) (i2 . (nil >< p2)))
+    skip2 = uncurry (fmap . curry ((either f1 aux) . distr))
+    aux = (split p1 (i2 . (nil >< id))) . p2
+\end{code}
 
+\newpage
+\subsubsection*{auxJoin}
+A função |auxJoin| é usada para a manipulação dos argumentos de um par |(expl ((a, Either b c)), d)|.
+Como podemos ver pela assinatura da função o tipo produzido |expl ((a, Either b (d,b)))|.
+
+\begin{code}
 auxJoin :: ([(a, Either b c)],d) -> [(a, Either b (d,c))]
-auxJoin = undefined
+auxJoin = fmap g . uncurry zip . (id >< repeat)
+  where
+    g = (id >< (either (i1 . p1) (i2 . swap))) . (id >< distl) . assocr
+\end{code}
 
+\subsubsection*{cFS2Exp}
+Função que permite visualizar um |File System| em |Graphviz|. Para isso usamos um anamorfismo que percorre o |File System|.
+
+\begin{code}
 cFS2Exp :: a -> FS a b -> (Exp () a)
-cFS2Exp = undefined
+cFS2Exp = curry . anaExp $ g
+  where
+    g (a, FS l) = i2 . (,) a $ fmap func l
+    func = \(x,y) -> case y of File f -> (x, FS []); Dir f -> (x, f)
+
 \end{code}
 
 %----------------- Fim do anexo com soluções dos alunos ------------------------%
