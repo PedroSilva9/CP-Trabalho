@@ -1665,13 +1665,12 @@ A função |cp| é utilizada para copiar um ficheiro existente num |File System|
 
 \begin{code}
 cp :: (Eq a) => Path a -> Path a -> FS a b -> FS a b
-cp pa pb fs = maybeAdd pb fs $ anaFS g (pa, fs)
+cp = curry . curry $ f
   where
-    maybeAdd pb fs (FS x) = if null x then fs else new pb ((\(File b) -> b) . p2 $ head x) fs
-    g (a, FS l) = if null a then empty else foo a (aux a l)
-    aux a l = filter (\z@(x,y) -> (head a) == x) l
-    foo a l = fmap (\fs -> case fs of (x, File f) -> (x, i1 f)
-                                      (x, Dir f) -> (x, i2 (tail a,f))) l
+    f = maybeAdd . split (p2 >< id) (g . (p1 >< tar))
+    g = uncurry (filter . curry (uncurry (==) . (id >< p1)))
+    maybeAdd = cond (null . p2) (p2 . p1) (func . (id >< (p2 . head)))
+    func = (uncurry . uncurry $ new) . assocl . (id >< swap) . assocr
 
 \end{code}
 
